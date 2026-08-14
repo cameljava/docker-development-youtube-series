@@ -23,35 +23,139 @@ Envoy is not only a Gateway API, that's just one of its features. </br>
 Let's take a look at the [Official Site](https://www.envoyproxy.io/) and jump to the documentation. </br>
 Envoy has a separate web page for the Gateway API feature. </br>
 
+## Cheat sheet
+
+Run these commands from `kubernetes/gateway-api/envoy` unless noted otherwise.
+
+### Install Gateway API CRDs
+
+```bash
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.1/standard-install.yaml
+kubectl get crd gatewayclasses.gateway.networking.k8s.io
+```
+
+### Install Envoy Gateway CRDs and controller
+
+```bash
+CHART_VERSION="v1.8.0"
+
+helm template eg-crds oci://docker.io/envoyproxy/gateway-crds-helm \
+  --version $CHART_VERSION \
+  --set crds.gatewayAPI.enabled=false \
+  --set crds.envoyGateway.enabled=true \
+  | awk 'BEGIN {print_yaml=0} /^---$/ {print_yaml=1} print_yaml {print}' > /tmp/envoy-gateway-crds.yaml
+
+kubectl apply --server-side -f /tmp/envoy-gateway-crds.yaml
+
+# verify Envoy Gateway CRDs, not just Gateway API CRDs
+kubectl get crd envoyproxies.gateway.envoyproxy.io
+kubectl api-resources --api-group=gateway.envoyproxy.io
+
+helm install envoy-gateway oci://docker.io/envoyproxy/gateway-helm \
+  --version $CHART_VERSION \
+  --values values.yaml \
+  --namespace envoy-gateway-system \
+  --create-namespace \
+  --skip-crds
+
+kubectl wait --timeout=5m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
+kubectl -n envoy-gateway-system get pods
+```
+
+### Apply and verify the class and gateway
+
+```bash
+kubectl apply -f 01-gatewayclass.yaml
+kubectl get gatewayclass
+kubectl describe gatewayclass envoy
+
+kubectl apply -f 02-gateway.yaml
+kubectl get gateway -n default
+kubectl describe gateway gateway-api -n default
+kubectl -n envoy-gateway-system get pods
+kubectl -n envoy-gateway-system get svc
+```
+
+### Inspect cluster-level resources
+
+```bash
+kubectl api-resources --namespaced=false
+kubectl get gatewayclass
+kubectl get crd | grep -E 'gateway|envoy'
+kubectl get clusterrole,clusterrolebinding | grep -E 'envoy|gateway'
+kubectl get validatingadmissionpolicy,validatingadmissionpolicybinding
+```
+
+### Inspect namespaced resources
+
+```bash
+kubectl get gateway -n default
+kubectl get httproute -n default
+kubectl get pods,svc -n envoy-gateway-system
+```
+
 ## Envoy: Gateway API controller
 
 Envoy has a `helm` chart specifically for the gateway product. </br>
 The `helm` chart relies on the Gateway API CRD's we installed in our cluster already as well as Envoy Proxy. </br>
+Because the introduction guide already installs Gateway API CRDs, we only need to install the Envoy Gateway CRDs here and disable CRD management in the main chart. </br>
 
 ### Installation 
 
 We can install the helm chart with `helm install` or upgrade it with `helm upgrade`:
 
+Run the following commands from the repository root. </br>
+If you are already in `kubernetes/gateway-api/envoy`, change `kubernetes/gateway-api/envoy/values.yaml` to `values.yaml`. </br>
+
 ```shell
 
-CHART_VERSION="v1.6.0"
-helm show chart oci://docker.io/envoyproxy/gateway-helm
-helm show values oci://docker.io/envoyproxy/gateway-helm > kubernetes/gateway-api/envoy/default-values.yaml
+CHART_VERSION="v1.8.0"
+
+# install Envoy Gateway CRDs only - Gateway API CRDs were installed in the introduction guide
+helm template eg-crds oci://docker.io/envoyproxy/gateway-crds-helm \
+  --version $CHART_VERSION \
+  --set crds.gatewayAPI.enabled=false \
+  --set crds.envoyGateway.enabled=true \
+  | awk 'BEGIN {print_yaml=0} /^---$/ {print_yaml=1} print_yaml {print}' > /tmp/envoy-gateway-crds.yaml
+
+kubectl apply --server-side -f /tmp/envoy-gateway-crds.yaml
+
+# verify Envoy Gateway CRDs, not just Gateway API CRDs
+kubectl get crd envoyproxies.gateway.envoyproxy.io
+kubectl api-resources --api-group=gateway.envoyproxy.io
+
+helm show chart oci://docker.io/envoyproxy/gateway-helm --version $CHART_VERSION
+helm show values oci://docker.io/envoyproxy/gateway-helm --version $CHART_VERSION > kubernetes/gateway-api/envoy/default-values.yaml
 
 helm install envoy-gateway oci://docker.io/envoyproxy/gateway-helm \
   --version $CHART_VERSION \
   --values kubernetes/gateway-api/envoy/values.yaml \
   --namespace envoy-gateway-system \
-  --create-namespace
+  --create-namespace \
+  --skip-crds
+
+kubectl wait --timeout=5m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
 ```
 
 Upgrade:
 
 ```shell
+# update Envoy Gateway CRDs first
+helm template eg-crds oci://docker.io/envoyproxy/gateway-crds-helm \
+  --version $CHART_VERSION \
+  --set crds.gatewayAPI.enabled=false \
+  --set crds.envoyGateway.enabled=true \
+  | awk 'BEGIN {print_yaml=0} /^---$/ {print_yaml=1} print_yaml {print}' > /tmp/envoy-gateway-crds.yaml
+
+kubectl apply --server-side -f /tmp/envoy-gateway-crds.yaml
+
 helm upgrade envoy-gateway oci://docker.io/envoyproxy/gateway-helm \
   --values kubernetes/gateway-api/envoy/values.yaml \
   --version $CHART_VERSION \
-  --namespace envoy-gateway-system
+  --namespace envoy-gateway-system \
+  --skip-crds
+
+kubectl wait --timeout=5m -n envoy-gateway-system deployment/envoy-gateway --for=condition=Available
 ```
 
 ### Configuration
@@ -76,16 +180,30 @@ kubectl -n envoy-gateway-system logs -l app.kubernetes.io/instance=envoy-gateway
 ## Install an Envoy Gateway Class
 
 ```shell
+# apply 01
 kubectl apply -f kubernetes/gateway-api/envoy/01-gatewayclass.yaml
+
+# verify 01 - GatewayClass is cluster-scoped, so there is no namespace flag
+kubectl get gatewayclass
+kubectl describe gatewayclass envoy
 ```
 
 ## Install an Envoy Gateway
 
 ```shell
+# apply 02
 kubectl apply -f kubernetes/gateway-api/envoy/02-gateway.yaml
+
+# verify 02 - Gateway is namespaced, in this sample it lives in default
+kubectl get gateway -n default
+kubectl describe gateway gateway-api -n default
 ```
 
 When we apply the gateway, we get a new gateway api pod. 
+
+At this stage, Envoy Gateway may create a generated service name such as `envoy-default-gateway-api-<hash>`. </br>
+Do not assume the service is called `envoy-gateway-default` until the custom `EnvoyProxy` configuration in `02.1-gateway-config.yaml` has been applied successfully. </br>
+When port-forwarding on macOS, avoid local ports `80` and `443` unless you are running with elevated privileges. Use non-privileged local ports such as `8080:80` and `8443:443` instead. </br>
 
 ```shell
 # check the new gateway-api pod
@@ -107,9 +225,11 @@ kubectl apply -f kubernetes/gateway-api/envoy/02.1-gateway-config.yaml
 kubectl -n envoy-gateway-system get deploy
 kubectl -n envoy-gateway-system get pods
 
-# port forward for access (get the correct service)
+# port forward for access
+# if the EnvoyProxy config applied successfully, the service should be envoy-gateway-default
+# otherwise, use the generated service name shown by kubectl get svc
 kubectl -n envoy-gateway-system get svc
-kubectl -n envoy-gateway-system port-forward svc/envoy-gateway-default 80
+kubectl -n envoy-gateway-system port-forward svc/<service-name> 8080:80
 ```
 
 ## HTTP Traffic management
@@ -131,11 +251,11 @@ We can use tools like `hey` to demonstrate connection limits.
 
 ```shell
 
-hey -c 10 -q 1 -z 10s -host "example-app.com" http://localhost:80/api/go/status
+hey -c 10 -q 1 -z 10s -host "example-app.com" http://localhost:8080/api/go/status
 
 kubectl apply -f kubernetes/gateway-api/envoy/08-clientpolicy-connectionlimit.yaml
 
-hey -c 10 -q 1 -z 10s -host "example-app.com" http://localhost:80/api/go/status
+hey -c 10 -q 1 -z 10s -host "example-app.com" http://localhost:8080/api/go/status
 ```
 
 #### Mutual TLS
@@ -160,7 +280,7 @@ curl -v -H "Host: example-app.com" \
 --cert kubernetes/gateway-api/tls/client-user.com-client.pem \
 --key kubernetes/gateway-api/tls/client-user.com-client-key.pem \
 --cacert kubernetes/gateway-api/tls/rootCA.pem \
-https://example-app.com/api/go/status
+https://127.0.0.1:8443/api/go/status
 
 ```
 
@@ -201,8 +321,9 @@ kubectl apply -f kubernetes/gateway-api/envoy/11-securitypolicy-cors.yaml
 kubectl delete clienttrafficpolicies mtls-policy
 kubectl delete SecurityPolicy go-route-cors
 
-# port-forward to 443 
-kubectl -n envoy-gateway-system port-forward svc/envoy-gateway-default 443
+# port-forward to local 8443 using the current gateway service name
+kubectl -n envoy-gateway-system get svc
+kubectl -n envoy-gateway-system port-forward svc/<service-name> 8443:443
 
 #install htpasswd (alpine)
 apk add apache2-utils
@@ -223,8 +344,9 @@ kubectl delete SecurityPolicy go-route-basicauth
 
 kubectl apply -f kubernetes/gateway-api/envoy/13-securitypolicy-apiauth.yaml
 
-# port-forward
-kubectl -n envoy-gateway-system port-forward svc/envoy-gateway-default 443
+# port-forward to local 8443 using the current gateway service name
+kubectl -n envoy-gateway-system get svc
+kubectl -n envoy-gateway-system port-forward svc/<service-name> 8443:443
 
 ```
 
@@ -237,7 +359,7 @@ curl -v -H "Host: example-app.com" \
 --cert kubernetes/gateway-api/tls/client-user.com-client.pem \
 --key kubernetes/gateway-api/tls/client-user.com-client-key.pem \
 --cacert kubernetes/gateway-api/tls/rootCA.pem \
-https://example-app.com/api/go/status
+https://127.0.0.1:8443/api/go/status
 ```
 
 Logs:

@@ -12,7 +12,7 @@ Once you finish this video, click [here]() to deep dive each of the Gateway API 
 Lets create a Kubernetes cluster to play with using [kind](https://kind.sigs.k8s.io/docs/user/quick-start/)
 
 ```
-kind create cluster --name gatewayapi --image kindest/node:v1.34.0
+kind create cluster --name gatewayapi --image kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5
 ```
 
 Test our cluster and makes sure `kubectl` is configured for it:
@@ -20,7 +20,7 @@ Test our cluster and makes sure `kubectl` is configured for it:
 ```
 kubectl get nodes
 NAME                       STATUS   ROLES           AGE   VERSION
-gatewayapi-control-plane   Ready    control-plane   40s   v1.34.0
+gatewayapi-control-plane   Ready    control-plane   40s   v1.36.1
 ```
 
 ## Gateway API CRDs
@@ -28,19 +28,19 @@ gatewayapi-control-plane   Ready    control-plane   40s   v1.34.0
 The Kubernetes Gateway API is not installed on kubernetes by default. My guess is it may at some point. </br>
 For now, we can grab it from the [Gateway API SIGS Guide](https://gateway-api.sigs.k8s.io/guides/#installing-gateway-api)
 
-<i><b>Important Note: </b>At the time of recording this guide, we'd like to look at as many features as possible, hence the `experimental` install is used.</i> </br>
+<i><b>Important Note: </b>This guide uses the latest stable Gateway API standard channel release.</i> </br>
 
 ```shell
-kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.4.1/standard-install.yaml
+
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.6.1/standard-install.yaml
+
 ```
 
-This will install (Stable Channel):
+This installs the stable standard channel CRDs used throughout this guide:
 
 * Gateway Classes: `kubectl get gatewayclass`
 * Gateways: `kubectl get gateway`
 * HTTP Routes:  `kubectl get httproute`
-
-These APIs are part of the Experimental Channel:
 * TLS Routes: `kubectl get tlsroute`
 * TCP Routes: `kubectl get tcproute`
 * UDP Routes: `kubectl get udproute`

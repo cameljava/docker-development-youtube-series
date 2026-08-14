@@ -24,7 +24,7 @@ These programs allow programs like Cilium to add security, performance and obser
 ### Create a kubernetes cluster
 
 ```shell
-kind create cluster --name gatewayapi --image kindest/node:v1.34.0 --config kubernetes/gateway-api/cilium/kind.yaml
+kind create cluster --name gatewayapi --image kindest/node:v1.36.1@sha256:3489c7674813ba5d8b1a9977baea8a6e553784dab7b84759d1014dbd78f7ebd5 --config kubernetes/gateway-api/cilium/kind.yaml
 ```
 
 Test our cluster and makes sure `kubectl` is configured for it:
@@ -32,8 +32,8 @@ Test our cluster and makes sure `kubectl` is configured for it:
 ```shell
 kubectl get nodes
 NAME                       STATUS     ROLES           AGE   VERSION
-gatewayapi-control-plane   NotReady   control-plane   93s   v1.34.0
-gatewayapi-worker          NotReady   <none>          83s   v1.34.0
+gatewayapi-control-plane   NotReady   control-plane   93s   v1.36.1
+gatewayapi-worker          NotReady   <none>          83s   v1.36.1
 ```
 
 The nodes will remain in a `NotReady` state until we unstall our network plugin, which we will do with Cilium. </br>
@@ -78,8 +78,8 @@ kubectl -n kube-system get pods
 # nodes should be Ready once above is Running
 kubectl get nodes
 NAME                       STATUS   ROLES           AGE   VERSION
-gatewayapi-control-plane   Ready    control-plane   18m   v1.34.0
-gatewayapi-worker          Ready    <none>          18m   v1.34.0
+gatewayapi-control-plane   Ready    control-plane   18m   v1.36.1
+gatewayapi-worker          Ready    <none>          18m   v1.36.1
 ```
 
 We can also check the Cilium Operator logs to ensure we are smooth sailing:
