@@ -23,6 +23,8 @@ Envoy is not only a Gateway API, that's just one of its features. </br>
 Let's take a look at the [Official Site](https://www.envoyproxy.io/) and jump to the documentation. </br>
 Envoy has a separate web page for the Gateway API feature. </br>
 
+For deeper conceptual background, see the knowledge docs in [`./k8sknowledgedoc/index.md`](./k8sknowledgedoc/index.md). </br>
+
 ## Cheat sheet
 
 Run these commands from `kubernetes/gateway-api/envoy` unless noted otherwise.
