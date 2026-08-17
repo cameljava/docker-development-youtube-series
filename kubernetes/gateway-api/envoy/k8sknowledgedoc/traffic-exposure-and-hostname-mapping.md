@@ -258,6 +258,160 @@ That model is simple enough to reason with and accurate enough for real troubles
 
 ## The difference between transport path and hostname mapping
 
+## When to put `hostname` on the `Gateway` listener
+
+This came up directly in this sample once we moved from a single HTTPS hostname to
+multiple HTTPS hostnames.
+
+The short version is:
+
+- `HTTPRoute.hostnames` is where request host matching normally lives
+- `Gateway.listeners[].hostname` is optional, but useful when a listener itself is intended for a specific host
+
+### What happens if the listener has no hostname
+
+If a `Gateway` listener omits `hostname`, that listener is not restricted to one
+host at the listener layer.
+
+In that case:
+
+- the `HTTPRoute.hostnames` field does the hostname matching
+- one HTTPS listener can serve multiple hosts if the certificate arrangement supports it
+
+This is often enough when:
+
+- one certificate covers all the needed names
+- or the implementation supports the certificate setup you want on a single listener
+
+### What happens if the listener has a hostname
+
+If a listener sets `hostname`, then the effective host matching is the intersection of:
+
+- the listener hostname
+- the route hostname list
+
+That means a route only attaches meaningfully when the hostnames line up.
+
+This is especially useful when:
+
+- two HTTPS listeners share the same port
+- each listener is meant for a different hostname
+- each hostname has its own certificate
+- you want the listener boundary to express that intent clearly
+
+## Why the current Envoy sample uses listener hostnames
+
+In the current sample, the `Gateway` has:
+
+- one HTTPS listener for `example-app.com`
+- one HTTPS listener for `goexample-app.com`
+- both listeners use port `443`
+- each listener has its own TLS secret
+
+That design is intentional.
+
+It allows the gateway to use standard HTTPS on the same port while separating
+hostname-specific listener intent.
+
+This is the relevant shape from [`../02-gateway.yaml`](../02-gateway.yaml):
+
+```yaml
+listeners:
+  - name: https
+    hostname: example-app.com
+    protocol: HTTPS
+    port: 443
+    tls:
+      mode: Terminate
+      certificateRefs:
+        - name: secret-tls
+
+  - name: https-goexample
+    hostname: goexample-app.com
+    protocol: HTTPS
+    port: 443
+    tls:
+      mode: Terminate
+      certificateRefs:
+        - name: secret-goexample-tls
+```
+
+This does **not** require another external port.
+
+The separation works because:
+
+- HTTPS host selection can use SNI
+- each listener is constrained by hostname
+- each listener can reference a different certificate
+
+## Why a second listener was the better choice here
+
+In theory, a single HTTPS listener can often serve multiple hosts.
+
+But in this specific case, the sample moved to a second listener because the Go
+application hostname needed its own certificate and that certificate was not the
+same one used for `example-app.com`.
+
+So the practical options were:
+
+1. use one certificate that covers both hostnames
+2. or use two HTTPS listeners on the same port with different listener hostnames and different certificate secrets
+
+The sample uses option 2.
+
+## Best-practice rule of thumb
+
+Use this shorthand when designing Gateway API host handling:
+
+1. Put hostname rules on `HTTPRoute` whenever the route itself is host-specific.
+2. Add `listener.hostname` when the listener is also host-specific.
+3. Strongly prefer `listener.hostname` when multiple HTTPS listeners share port `443` and each uses a different certificate.
+4. Do not create a new port just because you add another hostname. A new port is usually unnecessary.
+
+## How the current Go routes fit this design
+
+The current sample uses **two** routes for the Go backend:
+
+- `go-route-http` for HTTP on `example-app.com`
+- `go-route` for HTTPS on `goexample-app.com`
+
+See [`../../07-httproute-tls.yaml`](../../07-httproute-tls.yaml):
+
+```yaml
+kind: HTTPRoute
+metadata:
+  name: go-route-http
+spec:
+  parentRefs:
+    - name: gateway-api
+      sectionName: http
+  hostnames:
+    - example-app.com
+---
+kind: HTTPRoute
+metadata:
+  name: go-route
+spec:
+  parentRefs:
+    - name: gateway-api
+      sectionName: https-goexample
+  hostnames:
+    - goexample-app.com
+```
+
+This split matters because `hostnames` is defined at the `HTTPRoute` level, not per `parentRef`.
+
+So this is **not** possible in a single route:
+
+- attach one parent to `http`
+- attach another parent to `https-goexample`
+- use `example-app.com` only for the HTTP parent
+- use `goexample-app.com` only for the HTTPS parent
+
+If the hostnames need to differ by entry point, separate `HTTPRoute` resources are the correct design.
+
+That is the key difference from the earlier sample shape where a single route could attach to a more general shared listener.
+
 This is the single most important distinction from the conversation.
 
 ### Transport path
@@ -573,18 +727,18 @@ curl -H "Host: example-app.com" http://127.0.0.1:8080/api/go/status
 kubectl -n envoy-gateway-system port-forward svc/<service-name> 8443:443
 
 curl --resolve example-app.com:8443:127.0.0.1 \
-	--cacert kubernetes/gateway-api/tls/rootCA.pem \
-	https://example-app.com:8443/api/go/status
+  --cacert kubernetes/gateway-api/tls/rootCA.pem \
+  https://example-app.com:8443/api/go/status
 ```
 
 ### HTTPS with client certificate and `--resolve`
 
 ```bash
 curl --resolve example-app.com:8443:127.0.0.1 \
-	--cert kubernetes/gateway-api/tls/client-user.com-client.pem \
-	--key kubernetes/gateway-api/tls/client-user.com-client-key.pem \
-	--cacert kubernetes/gateway-api/tls/rootCA.pem \
-	https://example-app.com:8443/api/go/status
+  --cert kubernetes/gateway-api/tls/client-user.com-client.pem \
+  --key kubernetes/gateway-api/tls/client-user.com-client-key.pem \
+  --cacert kubernetes/gateway-api/tls/rootCA.pem \
+  https://example-app.com:8443/api/go/status
 ```
 
 This pattern is especially useful once you start testing mTLS and API-key based access in this sample.

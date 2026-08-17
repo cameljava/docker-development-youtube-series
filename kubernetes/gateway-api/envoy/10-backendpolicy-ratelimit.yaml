@@ -1,5 +1,5 @@
 apiVersion: gateway.envoyproxy.io/v1alpha1
-kind: BackendTrafficPolicy 
+kind: BackendTrafficPolicy
 metadata:
   name: ratelimit-go-httproute
 spec:
@@ -10,10 +10,10 @@ spec:
   rateLimit:
     local:
       rules:
-      - clientSelectors:
-        - headers:
-          - name: x-user-id
-            value: one
-        limit:
+      # - clientSelectors:
+      #   - path:
+      #       type: Exact
+      #       value: /api/go
+      - limit:
           requests: 3
           unit: Hour

@@ -10,6 +10,8 @@ These notes are meant to complement the step-by-step instructions in [`../README
 - [Envoy Gateway Concepts](./envoy-gateway-concepts.md)
 - [Gateway Status Conditions](./gateway-status-conditions.md)
 - [Traffic Exposure and Hostname Mapping](./traffic-exposure-and-hostname-mapping.md)
+- [Stable Browser Testing on macOS with kind](./stable-browser-testing-on-macos-kind.md)
+- [Upgrading CRDs on Live Clusters](./upgrading-crds-on-live-clusters.md)
 - [Testing and Troubleshooting](./testing-and-troubleshooting.md)
 
 ## Relationship diagram
@@ -121,5 +123,7 @@ Not every example manifest is intended to be active at the same time. Several po
 1. [Scope](./scope.md)
 2. [Envoy Gateway Concepts](./envoy-gateway-concepts.md)
 3. [Traffic Exposure and Hostname Mapping](./traffic-exposure-and-hostname-mapping.md)
-4. [Gateway Status Conditions](./gateway-status-conditions.md)
-5. [Testing and Troubleshooting](./testing-and-troubleshooting.md)
+4. [Stable Browser Testing on macOS with kind](./stable-browser-testing-on-macos-kind.md)
+5. [Upgrading CRDs on Live Clusters](./upgrading-crds-on-live-clusters.md)
+6. [Gateway Status Conditions](./gateway-status-conditions.md)
+7. [Testing and Troubleshooting](./testing-and-troubleshooting.md)

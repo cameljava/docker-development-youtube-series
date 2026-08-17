@@ -18,12 +18,26 @@ spec:
           from: Same  #or All or Selector
     
     - name: https
+      hostname: example-app.com
       protocol: HTTPS
       port: 443
       tls:
         mode: Terminate
         certificateRefs:
           - name: secret-tls
+            namespace: default
+      allowedRoutes:
+        namespaces:
+          from: Same
+
+    - name: https-goexample
+      hostname: goexample-app.com
+      protocol: HTTPS
+      port: 443
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - name: secret-goexample-tls
             namespace: default
       allowedRoutes:
         namespaces:

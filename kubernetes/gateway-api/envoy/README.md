@@ -25,6 +25,8 @@ Envoy has a separate web page for the Gateway API feature. </br>
 
 For deeper conceptual background, see the knowledge docs in [`./k8sknowledgedoc/index.md`](./k8sknowledgedoc/index.md). </br>
 
+For live-cluster CRD upgrades, see [`./k8sknowledgedoc/upgrading-crds-on-live-clusters.md`](./k8sknowledgedoc/upgrading-crds-on-live-clusters.md). </br>
+
 ## Cheat sheet
 
 Run these commands from `kubernetes/gateway-api/envoy` unless noted otherwise.
@@ -39,7 +41,7 @@ kubectl get crd gatewayclasses.gateway.networking.k8s.io
 ### Install Envoy Gateway CRDs and controller
 
 ```bash
-CHART_VERSION="v1.8.0"
+CHART_VERSION="v1.9.0"
 
 helm template eg-crds oci://docker.io/envoyproxy/gateway-crds-helm \
   --version $CHART_VERSION \
@@ -111,7 +113,7 @@ If you are already in `kubernetes/gateway-api/envoy`, change `kubernetes/gateway
 
 ```shell
 
-CHART_VERSION="v1.8.0"
+CHART_VERSION="v1.9.0"
 
 # install Envoy Gateway CRDs only - Gateway API CRDs were installed in the introduction guide
 helm template eg-crds oci://docker.io/envoyproxy/gateway-crds-helm \
@@ -201,11 +203,22 @@ kubectl get gateway -n default
 kubectl describe gateway gateway-api -n default
 ```
 
+The current sample `Gateway` now has three listeners:
+
+* `http` on port `80`
+* `https` on port `443` for `example-app.com`
+* `https-goexample` on port `443` for `goexample-app.com`
+
+The two HTTPS listeners intentionally share port `443`.
+They are separated by hostname and certificate, so a second external port is not required.
+
 When we apply the gateway, we get a new gateway api pod. 
 
 At this stage, Envoy Gateway may create a generated service name such as `envoy-default-gateway-api-<hash>`. </br>
 Do not assume the service is called `envoy-gateway-default` until the custom `EnvoyProxy` configuration in `02.1-gateway-config.yaml` has been applied successfully. </br>
 When port-forwarding on macOS, avoid local ports `80` and `443` unless you are running with elevated privileges. Use non-privileged local ports such as `8080:80` and `8443:443` instead. </br>
+
+If you want browser testing to be more stable than `kubectl port-forward`, see the detailed walkthrough in [`./k8sknowledgedoc/stable-browser-testing-on-macos-kind.md`](./k8sknowledgedoc/stable-browser-testing-on-macos-kind.md). </br>
 
 ```shell
 # check the new gateway-api pod
@@ -214,6 +227,70 @@ kubectl -n envoy-gateway-system get pods
 # we also have a new service
 kubectl -n envoy-gateway-system get svc
 ```
+
+### Additional HTTPS hostname for the Go app
+
+The sample now includes a dedicated HTTPS listener for the Go application hostname `goexample-app.com`.
+
+That listener uses a separate TLS secret:
+
+```shell
+kubectl create secret tls secret-goexample-tls -n default \
+  --cert /path/to/goexample-app.com.fullchain.pem \
+  --key /path/to/goexample-app.com.key.pem
+```
+
+Replace the placeholder paths with the actual certificate and key file locations on your machine.
+
+The `Gateway` listener lives in [`./02-gateway.yaml`](./02-gateway.yaml):
+
+```yaml
+- name: https-goexample
+  hostname: goexample-app.com
+  protocol: HTTPS
+  port: 443
+  tls:
+    mode: Terminate
+    certificateRefs:
+      - name: secret-goexample-tls
+        namespace: default
+```
+
+The Go application now uses **split routes** in [`../07-httproute-tls.yaml`](../07-httproute-tls.yaml):
+
+```yaml
+kind: HTTPRoute
+metadata:
+  name: go-route-http
+
+spec:
+  parentRefs:
+  - name: gateway-api
+    sectionName: http
+  hostnames:
+  - example-app.com
+---
+kind: HTTPRoute
+metadata:
+  name: go-route
+
+spec:
+  parentRefs:
+  - name: gateway-api
+    sectionName: https-goexample
+  hostnames:
+  - goexample-app.com
+```
+
+This split is necessary because `HTTPRoute.hostnames` applies to the whole route.
+One `HTTPRoute` cannot use `example-app.com` for its HTTP parent and `goexample-app.com` for its HTTPS parent at the same time.
+
+This is a good pattern when:
+
+* you want standard HTTPS on port `443`
+* each hostname has its own certificate
+* and you want the listener boundary to be explicit at the `Gateway` level
+* you want different hostnames for the HTTP and HTTPS entry points of the same backend
 
 ### Gateway Configuration
 
@@ -301,6 +378,24 @@ curl -I --header "x-user-id: one" http://example-app.com/api/go/status ; sleep 1
 done
 
 ```
+
+The current repo also includes a minimal local rate-limit reproduction manifest:
+
+```shell
+kubectl apply -f kubernetes/gateway-api/envoy/10.1-backendpolicy-ratelimit-minimal.yaml
+
+for i in {1..4}; do
+  curl -I --header "Host: example-app.com" http://127.0.0.1:8080/ratelimit-minimal ; sleep 1;
+done
+```
+
+This minimal repro isolates local rate limiting from the more complex split-route and TLS examples.
+
+Important note from this session:
+
+* Local rate limiting in this repo was verified working after upgrading Envoy Gateway to `v1.9.0`.
+* On `v1.8.0`, the policy could be accepted by Kubernetes but still fail to appear in the generated Envoy xDS for this setup.
+* If you need to debug that case, see [`./k8sknowledgedoc/testing-and-troubleshooting.md`](./k8sknowledgedoc/testing-and-troubleshooting.md).
 
 ### Security Policies
 
